@@ -69,6 +69,26 @@ typedef struct _XCape_t
     Bool timeout_valid;
 } XCape_t;
 
+#define MAX_CODE 256
+Bool codeMapped[MAX_CODE];
+typedef struct _ChordMap_t
+{
+  KeyCode in1, in2, out;
+} ChordMap;
+ChordMap nullMap = {MAX_CODE, MAX_CODE, MAX_CODE};
+  
+Bool inMapP(KeyCode k, ChordMap m)
+{
+  return k == m.in1 ? True : k == m.in2 ? True : False;
+}
+
+#define MAX_MAPS 20
+ChordMap maps[MAX_MAPS];
+
+#define MAX_KEYS 250
+KeyCode keysRec[MAX_KEYS];
+int keysRecPtr = 0;
+
 /************************************************************************
  * Internal function declarations
  ***********************************************************************/
@@ -94,6 +114,14 @@ int main (int argc, char **argv)
     self->timeout.tv_usec = 500000;
     self->timeout_valid = True;
     self->generated = NULL;
+    for(i=0; i<MAX_MAPS; ++i)
+      {
+        maps[i] = nullMap;
+      }
+    for(i=0; i<MAX_CODE; ++i)
+      {
+        codeMapped[i] = False;
+      }
 
     while ((ch = getopt (argc, argv, "de:t:")) != -1)
     {
@@ -313,6 +341,64 @@ void handle_key (XCape_t *self, KeyMap_t *key,
     }
 }
 
+void sendKey (KeyCode c, XCape_t *self)
+{
+  // Press and release
+  XTestFakeKeyEvent(self->ctrl_conn, c, True, 0);
+  XTestFakeKeyEvent(self->ctrl_conn, c, False, 0);
+}
+
+void sendKeys (int u1, int u2, ChordMap m, XCape_t *self)
+{
+  sendKey(m.out, self);
+  for(int i=0; i<keysRecPtr; ++i)
+    {
+      if(i != u1 && i != u2)
+        sendKey(keysRec[i], self);
+    }
+  keysRecPtr = 0;
+}
+
+void handle (int event, KeyCode code, XCape_t *self)
+{
+  if (key_event == KeyPress)
+    {
+      keysRec[keysRecPtr++] = code;
+    }
+  else
+    {
+      int used1 = MAX_KEYS;
+      int used2 = MAX_KEYS;
+      ChordMap map = nullMap;
+      for(int i=0; i<keysRecPtr; ++i)
+        {
+          if (codeMapped[i])
+            {
+              for(int j=i; j<keysRecPtr; ++j)
+                {
+                  if (codeMapped[j])
+                    {
+                      for(int k=0; k<MAX_MAPS; ++k)
+                        {
+                          if(inMapP(keysRec[i], maps[k]) &&
+                             inMapP(keysRec[j], maps[k]))
+                            {
+                              used1 = i;
+                              used2 = j;
+                              map = maps[k];
+                              goto send;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+ send:
+  sendKeys(used1, used2, map);
+}
+  
+
 void intercept (XPointer user_data, XRecordInterceptData *data)
 {
     XCape_t *self = (XCape_t*)user_data;
@@ -325,6 +411,14 @@ void intercept (XPointer user_data, XRecordInterceptData *data)
         KeyCode key_code  = data->data[1];
         Key_t *g, *g_prev = NULL;
 
+
+
+        handle(key_event, key_code);
+        goto exit;
+
+
+
+        
         for (g = self->generated; g != NULL; g = g->next)
         {
             if (g->key == key_code)
