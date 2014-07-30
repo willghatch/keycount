@@ -32,28 +32,13 @@
 #include <X11/extensions/XTest.h>
 #include <X11/XKBlib.h>
 
+#include <glib.h>
+
 
 /************************************************************************
  * Internal data types
  ***********************************************************************/
-typedef struct _Key_t
-{
-    KeyCode key;
-    struct _Key_t *next;
-} Key_t;
 
-typedef struct _KeyMap_t
-{
-    Bool UseKeyCode;        // (for from) instead of KeySym; ignore latter
-    KeySym from_ks;
-    KeyCode from_kc;
-    Key_t *to_keys;
-    Bool used;
-    Bool pressed;
-    Bool mouse;
-    struct timeval down_at;
-    struct _KeyMap_t *next;
-} KeyMap_t;
 
 typedef struct _XCape_t
 {
@@ -63,31 +48,15 @@ typedef struct _XCape_t
     pthread_t sigwait_thread;
     sigset_t sigset;
     Bool debug;
-    KeyMap_t *map;
-    Key_t *generated;
     struct timeval timeout;
     Bool timeout_valid;
 } XCape_t;
 
-#define MAX_CODE 256
-Bool codeMapped[MAX_CODE];
-typedef struct _ChordMap_t
+typedef struct _Entry
 {
-  KeyCode in1, in2, out;
-} ChordMap;
-ChordMap nullMap = {MAX_CODE, MAX_CODE, MAX_CODE};
-  
-Bool inMapP(KeyCode k, ChordMap m)
-{
-  return k == m.in1 ? True : k == m.in2 ? True : False;
-}
-
-#define MAX_MAPS 20
-ChordMap maps[MAX_MAPS];
-
-#define MAX_KEYS 250
-KeyCode keysRec[MAX_KEYS];
-int keysRecPtr = 0;
+  int timesPressed;
+  GHashTable *subtable;
+} Entry;
 
 /************************************************************************
  * Internal function declarations
@@ -96,9 +65,17 @@ void *sig_handler (void *user_data);
 
 void intercept (XPointer user_data, XRecordInterceptData *data);
 
-KeyMap_t *parse_mapping (Display *ctrl_conn, char *mapping, Bool debug);
+GHashTable *symtab = NULL;
+Bool useDigraphs = True;
+Bool useTrigraphs = True;
+#define NAMESIZE 50
+char symName[NAMESIZE];
+#define LASTKEYSIZE 3
+int lastKeys[LASTKEYSIZE];
+Bool extraDebug = False;
+int nreceived = 0;
 
-Key_t *key_add_key (Key_t *keys, KeyCode key);
+
 
 /************************************************************************
  * Main function
@@ -107,21 +84,9 @@ int main (int argc, char **argv)
 {
     XCape_t *self = malloc (sizeof (XCape_t));
     int dummy, ch;
-    static char default_mapping[] = "Control_L=Escape";
-    char *mapping = default_mapping;
     self->debug = False;
-    self->timeout.tv_sec = 0;
-    self->timeout.tv_usec = 500000;
-    self->timeout_valid = True;
-    self->generated = NULL;
-    for(i=0; i<MAX_MAPS; ++i)
-      {
-        maps[i] = nullMap;
-      }
-    for(i=0; i<MAX_CODE; ++i)
-      {
-        codeMapped[i] = False;
-      }
+
+    symtab = g_hash_table_new(g_int_hash, g_int_equal);
 
     while ((ch = getopt (argc, argv, "de:t:")) != -1)
     {
@@ -131,7 +96,6 @@ int main (int argc, char **argv)
             self->debug = True;
             break;
         case 'e':
-            mapping = optarg;
             break;
         case 't':
             {
@@ -182,10 +146,7 @@ int main (int argc, char **argv)
         exit (EXIT_FAILURE);
     }
 
-    self->map = parse_mapping (self->ctrl_conn, mapping, self->debug);
 
-    if (self->map == NULL)
-        exit (EXIT_FAILURE);
 
     if (self->debug != True)
         daemon (0, 0);
@@ -263,345 +224,142 @@ void *sig_handler (void *user_data)
     return NULL;
 }
 
-Key_t *key_add_key (Key_t *keys, KeyCode key)
-{
-    Key_t *rval = keys;
 
-    if (keys == NULL)
+void rotateLastkeys (int newsym)
+{
+    int i;
+    for(i = LASTKEYSIZE-1; i > 0; --i) {
+        lastKeys[i] = lastKeys[i-1];
+    }
+    lastKeys[0] = newsym;
+}
+
+void incKeyInTable (GHashTable *table, int keysym)
+{
+    Entry *entry = g_hash_table_lookup(table, &keysym);
+    if (NULL == entry)
     {
-        keys = malloc (sizeof (Key_t));
-        rval = keys;
+        printf("key not in table\n");
+        int *key = malloc(sizeof(int));
+        *key = keysym;
+        entry = malloc(sizeof(Entry));
+        entry->timesPressed = 1;
+        entry->subtable = NULL;
+        g_hash_table_insert(table, key, entry);
     }
     else
     {
-        while (keys->next != NULL) keys = keys->next;
-        keys = (keys->next = malloc (sizeof (Key_t)));
-    }
-
-    keys->key = key;
-    keys->next = NULL;
-
-    return rval;
-}
-
-void handle_key (XCape_t *self, KeyMap_t *key,
-        Bool mouse_pressed, int key_event)
-{
-    Key_t *k;
-
-    if (key_event == KeyPress)
-    {
-        if (self->debug) fprintf (stdout, "Key pressed!\n");
-
-        key->pressed = True;
-
-        if (self->timeout_valid)
-            gettimeofday (&key->down_at, NULL);
-
-        if (mouse_pressed)
-        {
-            key->used = True;
-        }
-    }
-    else
-    {
-        if (self->debug) fprintf (stdout, "Key released!\n");
-        if (key->used == False)
-        {
-            struct timeval timev = self->timeout;
-            if (self->timeout_valid)
-            {
-                gettimeofday (&timev, NULL);
-                timersub (&timev, &key->down_at, &timev);
-            }
-
-            if (!self->timeout_valid || timercmp (&timev, &self->timeout, <))
-            {
-                for (k = key->to_keys; k != NULL; k = k->next)
-                {
-                    if (self->debug) fprintf (stdout, "Generating %s!\n",
-                            XKeysymToString (XkbKeycodeToKeysym (self->ctrl_conn,
-                                    k->key, 0, 0)));
-
-                    XTestFakeKeyEvent (self->ctrl_conn,
-                            k->key, True, 0);
-                    self->generated = key_add_key (self->generated, k->key);
-                }
-                for (k = key->to_keys; k != NULL; k = k->next)
-                {
-                    XTestFakeKeyEvent (self->ctrl_conn,
-                            k->key, False, 0);
-                    self->generated = key_add_key (self->generated, k->key);
-                }
-                XFlush (self->ctrl_conn);
-            }
-        }
-        key->used = False;
-        key->pressed = False;
+        entry->timesPressed += 1;
     }
 }
 
-void sendKey (KeyCode c, XCape_t *self)
-{
-  // Press and release
-  XTestFakeKeyEvent(self->ctrl_conn, c, True, 0);
-  XTestFakeKeyEvent(self->ctrl_conn, c, False, 0);
-}
+typedef struct _PrintData {
+    FILE* stream;
+    int depth;
+} PrintData;
 
-void sendKeys (int u1, int u2, ChordMap m, XCape_t *self)
+void printEntry(gpointer *key, gpointer *value, gpointer *data)
 {
-  sendKey(m.out, self);
-  for(int i=0; i<keysRecPtr; ++i)
-    {
-      if(i != u1 && i != u2)
-        sendKey(keysRec[i], self);
-    }
-  keysRecPtr = 0;
-}
+    PrintData *d = (PrintData*) data;
+    int symbol = *(int*) key;
+    Entry *entry = (Entry*) value;
 
-void handle (int event, KeyCode code, XCape_t *self)
-{
-  if (key_event == KeyPress)
-    {
-      keysRec[keysRecPtr++] = code;
+    if (NULL == entry || NULL == data)
+        return;
+    char* symstring = XKeysymToString(symbol);
+    int i;
+    for (i = 0; i < d->depth; ++i) {
+        fprintf(d->stream, "*   ");
     }
-  else
-    {
-      int used1 = MAX_KEYS;
-      int used2 = MAX_KEYS;
-      ChordMap map = nullMap;
-      for(int i=0; i<keysRecPtr; ++i)
-        {
-          if (codeMapped[i])
-            {
-              for(int j=i; j<keysRecPtr; ++j)
-                {
-                  if (codeMapped[j])
-                    {
-                      for(int k=0; k<MAX_MAPS; ++k)
-                        {
-                          if(inMapP(keysRec[i], maps[k]) &&
-                             inMapP(keysRec[j], maps[k]))
-                            {
-                              used1 = i;
-                              used2 = j;
-                              map = maps[k];
-                              goto send;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
- send:
-  sendKeys(used1, used2, map);
+    fprintf(d->stream, "%s:%d\n", symstring, entry->timesPressed);
+    printTable(d->stream, entry->subtable, d->depth+1);
 }
   
+void printTable(FILE* stream, GHashTable *tab, int depth)
+{
+    if (NULL == tab)
+        return;
+    PrintData *d = malloc(sizeof(PrintData));
+    d->stream = stream;
+    d->depth = depth;
+    g_hash_table_foreach(tab, printEntry, d);
+    free(d);
+}
 
 void intercept (XPointer user_data, XRecordInterceptData *data)
 {
     XCape_t *self = (XCape_t*)user_data;
-    static Bool mouse_pressed = False;
-    KeyMap_t *km;
 
     if (data->category == XRecordFromServer)
     {
         int     key_event = data->data[0];
         KeyCode key_code  = data->data[1];
-        Key_t *g, *g_prev = NULL;
+        static int mods = 0;
+        int extrabytes_garbage;
 
+        int xksym = XkbKeycodeToKeysym (self->ctrl_conn, key_code, 0, 0);
+        int modsForKey = XkbKeysymToModifiers(self->ctrl_conn, xksym);
+        mods ^= modsForKey;
 
-
-        handle(key_event, key_code);
-        goto exit;
-
-
-
-        
-        for (g = self->generated; g != NULL; g = g->next)
-        {
-            if (g->key == key_code)
-            {
-                if (self->debug) fprintf (stdout,
-                        "Ignoring generated event.\n");
-                if (g_prev != NULL)
-                {
-                    g_prev->next = g->next;
-                }
-                else
-                {
-                    self->generated = g->next;
-                }
-                free (g);
-                goto exit;
-            }
-            g_prev = g;
+        // this doesn't seem to be working for me
+        //XkbTranslateKeySym(self->ctrl_conn, &xksym, mods, symName, NAMESIZE, &extrabytes_garbage);
+        // so I'll do the translations myself -- assuming a fairly normal layout
+        int shiftMods = XkbKeysymToModifiers(self->ctrl_conn, XK_Shift_L);
+        int capsMods = XkbKeysymToModifiers(self->ctrl_conn, XK_Caps_Lock);
+        int l3Mods = XkbKeysymToModifiers(self->ctrl_conn, XK_ISO_Level3_Shift);
+        int level = 0;
+        if (mods & (shiftMods|capsMods)) {
+            level += 1; // close enough.  I won't bother cancelling shift and caps, because my layout doesn't
+        }
+        if (mods & l3Mods) {
+            level += 2; // because level3 shift adds two... of course!
         }
 
-        if (self->debug) fprintf (stdout,
-                "Intercepted key event %d, key code %d\n",
-                key_event, key_code);
+        int transKey = XkbKeycodeToKeysym (self->ctrl_conn, key_code, 0, level);
 
-        if (key_event == ButtonPress)
-        {
-            mouse_pressed = True;
+        //if (extraDebug) {
+        if (1) {
+            printf("key event with %s\n", XKeysymToString(xksym));
+            printf("trans: %s\n", XKeysymToString(transKey));
+            //printf("mods: %d\n", mods);
         }
-        else if (key_event == ButtonRelease)
-        {
-            mouse_pressed = False;
-        }
-        else
-        {
-            for (km = self->map; km != NULL; km = km->next)
-            {
-                if ((km->UseKeyCode == False
-                        && XkbKeycodeToKeysym (self->ctrl_conn, key_code, 0, 0)
-                            == km->from_ks)
-                    || (km->UseKeyCode == True
-                        && key_code == km->from_kc))
-                {
-                    handle_key (self, km, mouse_pressed, key_event);
+
+        int sym = modsForKey ? xksym : transKey; // assume that modifiers are one-level
+
+        //XkbKeycodeToKeysym (display, keycode, group, level)
+        //XKeysymToString(xksym)
+        if (key_event == KeyPress) {
+            ++nreceived;
+            rotateLastkeys(sym);
+            // record new key
+            incKeyInTable(symtab, sym);
+            
+            Entry *oldEntry, *oldOldEntry, *subEntry;
+            if (useDigraphs && nreceived > 1) {
+                oldEntry = g_hash_table_lookup(symtab, lastKeys+1);
+                if(NULL == oldEntry->subtable) {
+                    oldEntry->subtable = g_hash_table_new(g_int_hash, g_int_equal);
                 }
-                else if (km->pressed && key_event == KeyPress)
-                {
-                    km->used = True;
+                incKeyInTable(oldEntry->subtable, sym);
+                
+                if (useTrigraphs && nreceived > 2) {
+                    oldOldEntry = g_hash_table_lookup(symtab, lastKeys+2);
+                    subEntry = g_hash_table_lookup(oldOldEntry->subtable, lastKeys+1);
+                    if(NULL == subEntry->subtable) {
+                        subEntry->subtable = g_hash_table_new(g_int_hash, g_int_equal);
+                    }
+                    incKeyInTable(subEntry->subtable, sym);
                 }
             }
+
+            if (nreceived == 20) {
+                printTable(stdout, symtab, 0);
+            }
+            
         }
+
     }
 
-exit:
     XRecordFreeData (data);
 }
 
-KeyMap_t *parse_token (Display *dpy, char *token, Bool debug)
-{
-    KeyMap_t *km = NULL;
-    KeySym    ks;
-    char      *from, *to, *key;
-    KeyCode   code;        // keycode (to)
-    long      fromcode;    // keycode (from)
-
-    to = token;
-    from = strsep (&to, "=");
-    if (to != NULL)
-    {
-        km = calloc (1, sizeof (KeyMap_t));
-
-        if (!strncmp (from, "#", 1)
-               && strsep (&from, "#") != NULL)
-        {
-            errno = 0;
-            fromcode = strtoul (from, NULL, 0); // dec, oct, hex automatically
-            if (errno == 0
-                   && fromcode <=255
-                   && XkbKeycodeToKeysym (dpy, (KeyCode) fromcode, 0, 0) != NoSymbol)
-            {
-                km->UseKeyCode = True;
-                km->from_kc = (KeyCode) fromcode;
-                if (debug)
-                {
-                  KeySym ks_temp = XkbKeycodeToKeysym (dpy, (KeyCode) fromcode, 0, 0);
-                  fprintf(stderr, "Assigned mapping from from \"%s\" ( keysym 0x%x, "
-                          "key code %d)\n",
-                          XKeysymToString(ks_temp),
-                          (unsigned) ks_temp,
-                          (unsigned) km->from_kc);
-                }
-            }
-            else
-            {
-                fprintf (stderr, "Invalid keycode: %s\n", from);
-                return NULL;
-            }
-        }
-        else
-        {
-            if ((ks = XStringToKeysym (from)) == NoSymbol)
-            {
-                fprintf (stderr, "Invalid key: %s\n", token);
-                return NULL;
-            }
-
-            km->UseKeyCode  = False;
-            km->from_ks     = ks;
-            km->to_keys     = NULL;
-
-            if (debug)
-            {
-              fprintf(stderr, "Assigned mapping from \"%s\" ( keysym 0x%x, "
-                      "key code %d)\n",
-                      XKeysymToString (km->from_ks),
-                      (unsigned) km->from_ks,
-                      (unsigned) XKeysymToKeycode (dpy, km->from_ks));
-            }
-        }
-
-        for(;;)
-        {
-            key = strsep (&to, "|");
-            if (key == NULL)
-                break;
-
-            if ((ks = XStringToKeysym (key)) == NoSymbol)
-            {
-                fprintf (stderr, "Invalid key: %s\n", key);
-                return NULL;
-            }
-
-            code = XKeysymToKeycode (dpy, ks);
-            if (code == 0)
-            {
-                fprintf (stderr, "WARNING: No keycode found for keysym "
-                        "%s (0x%x) in mapping %s. Ignoring this "
-                        "mapping.\n", key, (unsigned int)ks, token);
-                return NULL;
-            }
-            km->to_keys = key_add_key (km->to_keys, code);
-
-            if (debug)
-            {
-              fprintf(stderr, "to \"%s\" (keysym 0x%x, key code %d)\n",
-                      key,
-                      (unsigned) XStringToKeysym (key),
-                      (unsigned) code);
-            }
-        }
-    }
-    else
-        fprintf (stderr, "WARNING: Mapping without = has no effect: '%s'\n", token);
-
-
-    return km;
-}
-
-KeyMap_t *parse_mapping (Display *ctrl_conn, char *mapping, Bool debug)
-{
-    char     *token;
-    KeyMap_t *rval, *km, *nkm;
-
-    rval = km = NULL;
-
-    for(;;)
-    {
-        token = strsep (&mapping, ";");
-        if (token == NULL)
-            break;
-
-        nkm = parse_token (ctrl_conn, token, debug);
-
-        if (nkm != NULL)
-        {
-            if (km == NULL)
-                rval = km = nkm;
-            else
-            {
-                km->next = nkm;
-                km = nkm;
-            }
-        }
-    }
-
-    return rval;
-}
