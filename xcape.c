@@ -48,8 +48,6 @@ typedef struct _XCape_t
     pthread_t sigwait_thread;
     sigset_t sigset;
     Bool debug;
-    struct timeval timeout;
-    Bool timeout_valid;
 } XCape_t;
 
 typedef struct _Entry
@@ -65,6 +63,9 @@ void *sig_handler (void *user_data);
 
 void intercept (XPointer user_data, XRecordInterceptData *data);
 
+void printTable(FILE* stream, GHashTable *tab, int depth);
+void freeTable(GHashTable *tab);
+
 GHashTable *symtab = NULL;
 Bool useDigraphs = True;
 Bool useTrigraphs = True;
@@ -74,6 +75,10 @@ char symName[NAMESIZE];
 int lastKeys[LASTKEYSIZE];
 Bool extraDebug = False;
 int nreceived = 0;
+#define DUMP_THRESHOLD 100
+
+FILE* outfile;
+
 
 
 
@@ -84,40 +89,30 @@ int main (int argc, char **argv)
 {
     XCape_t *self = malloc (sizeof (XCape_t));
     int dummy, ch;
+    outfile = NULL;
     self->debug = False;
 
     symtab = g_hash_table_new(g_int_hash, g_int_equal);
 
-    while ((ch = getopt (argc, argv, "de:t:")) != -1)
+    while ((ch = getopt (argc, argv, "df:")) != -1)
     {
         switch (ch)
         {
         case 'd':
             self->debug = True;
             break;
-        case 'e':
-            break;
-        case 't':
-            {
-                int ms = atoi (optarg);
-                if (ms > 0)
-                {
-                    self->timeout_valid = True;
-                    self->timeout.tv_sec = ms / 1000;
-                    self->timeout.tv_usec = (ms % 1000) * 1000;
-                }
-                else
-                {
-                    self->timeout_valid = False;
-                }
-            }
+        case 'f':
+            outfile = fopen(optarg, "w");
             break;
         default:
-            fprintf (stdout, "Usage: %s [-d] [-t timeout_ms] [-e <mapping>]\n", argv[0]);
+            fprintf (stdout, "Usage: %s -f <outputfile>\n", argv[0]);
             fprintf (stdout,
                     "Runs as a daemon unless -d flag is set\n");
             return EXIT_SUCCESS;
         }
+    }
+    if (NULL == outfile) {
+        outfile = fopen("keycount.log", "w");
     }
 
     self->data_conn = XOpenDisplay (NULL);
@@ -239,7 +234,6 @@ void incKeyInTable (GHashTable *table, int keysym)
     Entry *entry = g_hash_table_lookup(table, &keysym);
     if (NULL == entry)
     {
-        printf("key not in table\n");
         int *key = malloc(sizeof(int));
         *key = keysym;
         entry = malloc(sizeof(Entry));
@@ -282,8 +276,22 @@ void printTable(FILE* stream, GHashTable *tab, int depth)
     PrintData *d = malloc(sizeof(PrintData));
     d->stream = stream;
     d->depth = depth;
-    g_hash_table_foreach(tab, printEntry, d);
+    g_hash_table_foreach(tab, (GHFunc)printEntry, d);
     free(d);
+}
+
+void freeEntry(Entry *entry) {
+    if (NULL == entry)
+        return;
+    freeTable(entry->subtable);
+    free(entry);
+}
+
+void freeTable(GHashTable *tab) {
+    if (NULL == tab)
+        return;
+    g_hash_table_foreach(tab, (GHFunc)freeEntry, NULL);
+    g_hash_table_destroy(tab);
 }
 
 void intercept (XPointer user_data, XRecordInterceptData *data)
@@ -295,7 +303,7 @@ void intercept (XPointer user_data, XRecordInterceptData *data)
         int     key_event = data->data[0];
         KeyCode key_code  = data->data[1];
         static int mods = 0;
-        int extrabytes_garbage;
+        //int extrabytes_garbage;
 
         int xksym = XkbKeycodeToKeysym (self->ctrl_conn, key_code, 0, 0);
         int modsForKey = XkbKeysymToModifiers(self->ctrl_conn, xksym);
@@ -317,12 +325,6 @@ void intercept (XPointer user_data, XRecordInterceptData *data)
 
         int transKey = XkbKeycodeToKeysym (self->ctrl_conn, key_code, 0, level);
 
-        //if (extraDebug) {
-        if (1) {
-            printf("key event with %s\n", XKeysymToString(xksym));
-            printf("trans: %s\n", XKeysymToString(transKey));
-            //printf("mods: %d\n", mods);
-        }
 
         int sym = modsForKey ? xksym : transKey; // assume that modifiers are one-level
 
@@ -352,8 +354,12 @@ void intercept (XPointer user_data, XRecordInterceptData *data)
                 }
             }
 
-            if (nreceived == 20) {
-                printTable(stdout, symtab, 0);
+            if (nreceived == DUMP_THRESHOLD) {
+                printTable(outfile, symtab, 0);
+                // free tables...
+                freeTable(symtab);
+                symtab = g_hash_table_new(g_int_hash, g_int_equal);
+                nreceived = 0;
             }
             
         }
