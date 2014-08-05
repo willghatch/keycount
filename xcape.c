@@ -75,7 +75,8 @@ char symName[NAMESIZE];
 int lastKeys[LASTKEYSIZE];
 Bool extraDebug = False;
 int nreceived = 0;
-#define DUMP_THRESHOLD 100
+#define DUMP_THRESHOLD 1000
+int dumpThreshold = DUMP_THRESHOLD;
 
 FILE* outfile;
 
@@ -94,7 +95,7 @@ int main (int argc, char **argv)
 
     symtab = g_hash_table_new(g_int_hash, g_int_equal);
 
-    while ((ch = getopt (argc, argv, "df:")) != -1)
+    while ((ch = getopt (argc, argv, "df:c:")) != -1)
     {
         switch (ch)
         {
@@ -103,6 +104,8 @@ int main (int argc, char **argv)
             break;
         case 'f':
             outfile = fopen(optarg, "w");
+        case 'c':
+            dumpThreshold = atoi(optarg);
             break;
         default:
             fprintf (stdout, "Usage: %s -f <outputfile>\n", argv[0]);
@@ -354,7 +357,7 @@ void intercept (XPointer user_data, XRecordInterceptData *data)
                 }
             }
 
-            if (nreceived == DUMP_THRESHOLD) {
+            if (nreceived == dumpThreshold) {
                 printTable(outfile, symtab, 0);
                 fprintf(outfile, "##########################################\n");
                 fflush(outfile);
