@@ -108,9 +108,12 @@ int main (int argc, char **argv)
             dumpThreshold = atoi(optarg);
             break;
         default:
-            fprintf (stdout, "Usage: %s -f <outputfile>\n", argv[0]);
-            fprintf (stdout,
-                    "Runs as a daemon unless -d flag is set\n");
+            fprintf (stdout, "Usage: %s [-f <outputfile>]\n", argv[0]);
+            fprintf (stdout, "    [-c <dump threshold>]\n");
+            fprintf (stdout, "Runs as a daemon unless -d flag is set\n");
+            fprintf (stdout, "Dumps output to outputfile (defaults to");
+            fprintf (stdout, "keycount.log) every time it reads the");
+            fprintf (stdout, "threshold number of keys.");
             return EXIT_SUCCESS;
         }
     }

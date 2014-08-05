@@ -1,0 +1,34 @@
+
+SUBMIT YOUR DATA!!!
+For the moment, at least, I'm collecting keyboard usage data.
+Please use this program and send me your usage output for me
+to analyze.  Send it to willghatch@gmail.com.  Put "keycount" as
+the subject, please.
+
+keycount is a key logger that counts the number of:
+    * presses of any individual key
+    * digraphs of two given keys
+    * trigraphs of two given keys
+
+The output format puts the count of individual keys on the first column,
+th count for digraphs in the second (nested under the first key of the
+digragh), and trigraphs similarly.
+
+The idea is to count these things to make a custom keymap.
+
+This program was written by cannibalizing code from the program xcape
+written by alols.
+
+https://github.com/alols/xcape.git
+    
+Thanks, alols, for making something I could rip apart rather than starting
+from scratch.
+
+Build by running make.
+
+Run with --help to see options.
+
+
+BUGS:
+It loses one future digraph and two future trigraphs every time it dumps.
+It was easier that way.  It's b-grade software to gather some data quick-like.

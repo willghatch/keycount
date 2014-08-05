@@ -1,8 +1,8 @@
 INSTALL=install
 PREFIX=/usr
-MANDIR?=/local/man/man1
+#MANDIR?=/local/man/man1
 
-TARGET := xcape
+TARGET := keycount
 
 CFLAGS += -Wall
 CFLAGS += `pkg-config --cflags xtst x11`
@@ -12,12 +12,11 @@ LDFLAGS += `pkg-config --libs xtst x11`
 LDFLAGS += `pkg-config --libs glib-2.0`
 LDFLAGS += -pthread
 
-$(TARGET): xcape.c
+$(TARGET): keycount.c
 	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
 
 install:
 	$(INSTALL) -Dm 755 $(TARGET) $(DESTDIR)$(PREFIX)/bin/$(TARGET)
-	$(INSTALL) -Dm 644 xcape.1 $(DESTDIR)$(PREFIX)$(MANDIR)/xcape.1
 
 clean:
 	rm $(TARGET)
