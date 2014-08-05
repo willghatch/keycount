@@ -356,7 +356,8 @@ void intercept (XPointer user_data, XRecordInterceptData *data)
 
             if (nreceived == DUMP_THRESHOLD) {
                 printTable(outfile, symtab, 0);
-                // free tables...
+                fprintf(outfile, "##########################################\n");
+                fflush(outfile);
                 freeTable(symtab);
                 symtab = g_hash_table_new(g_int_hash, g_int_equal);
                 nreceived = 0;
