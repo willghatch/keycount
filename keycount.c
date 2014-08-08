@@ -69,6 +69,7 @@ void freeTable(GHashTable *tab);
 GHashTable *symtab = NULL;
 Bool useDigraphs = True;
 Bool useTrigraphs = True;
+Bool useOnlyLevel1 = False;
 #define NAMESIZE 50
 char symName[NAMESIZE];
 #define LASTKEYSIZE 3
@@ -95,10 +96,13 @@ int main (int argc, char **argv)
 
     symtab = g_hash_table_new(g_int_hash, g_int_equal);
 
-    while ((ch = getopt (argc, argv, "df:c:")) != -1)
+    while ((ch = getopt (argc, argv, "dlf:c:")) != -1)
     {
         switch (ch)
         {
+        case 'l':
+            useOnlyLevel1 = True;
+            break;
         case 'd':
             self->debug = True;
             break;
@@ -110,6 +114,8 @@ int main (int argc, char **argv)
         default:
             fprintf (stdout, "Usage: %s [-f <outputfile>]\n", argv[0]);
             fprintf (stdout, "    [-c <dump threshold>]\n");
+            fprintf (stdout, "Now with -l for use only level1 symbols\n");
+            fprintf (stdout, "(useful for getting stats on physical keys\n");
             fprintf (stdout, "Runs as a daemon unless -d flag is set\n");
             fprintf (stdout, "Dumps output to outputfile (defaults to");
             fprintf (stdout, "keycount.log) every time it reads the");
@@ -332,7 +338,10 @@ void intercept (XPointer user_data, XRecordInterceptData *data)
         int transKey = XkbKeycodeToKeysym (self->ctrl_conn, key_code, 0, level);
 
 
-        int sym = modsForKey ? xksym : transKey; // assume that modifiers are one-level
+        int sym = xksym;
+        if (!useOnlyLevel1) {
+            sym = modsForKey ? xksym : transKey; // assume that modifiers are one-level
+        }
 
         //XkbKeycodeToKeysym (display, keycode, group, level)
         //XKeysymToString(xksym)
