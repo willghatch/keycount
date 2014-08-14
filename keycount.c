@@ -64,7 +64,7 @@ void *sig_handler (void *user_data);
 void intercept (XPointer user_data, XRecordInterceptData *data);
 
 void printTable(FILE* stream, GHashTable *tab, int depth);
-void freeTable(GHashTable *tab);
+void freeEntry(Entry *entry);
 
 GHashTable *symtab = NULL;
 Bool useDigraphs = True;
@@ -94,7 +94,8 @@ int main (int argc, char **argv)
     outfile = NULL;
     self->debug = False;
 
-    symtab = g_hash_table_new(g_int_hash, g_int_equal);
+    symtab = g_hash_table_new_full(g_int_hash, g_int_equal, 
+        (GDestroyNotify)free, (GDestroyNotify)freeEntry);
 
     while ((ch = getopt (argc, argv, "dlf:c:")) != -1)
     {
@@ -295,15 +296,8 @@ void printTable(FILE* stream, GHashTable *tab, int depth)
 void freeEntry(Entry *entry) {
     if (NULL == entry)
         return;
-    freeTable(entry->subtable);
+    g_hash_table_destroy(entry->subtable);
     free(entry);
-}
-
-void freeTable(GHashTable *tab) {
-    if (NULL == tab)
-        return;
-    g_hash_table_foreach(tab, (GHFunc)freeEntry, NULL);
-    g_hash_table_destroy(tab);
 }
 
 void intercept (XPointer user_data, XRecordInterceptData *data)
@@ -355,7 +349,8 @@ void intercept (XPointer user_data, XRecordInterceptData *data)
             if (useDigraphs && nreceived > 1) {
                 oldEntry = g_hash_table_lookup(symtab, lastKeys+1);
                 if(NULL == oldEntry->subtable) {
-                    oldEntry->subtable = g_hash_table_new(g_int_hash, g_int_equal);
+                    oldEntry->subtable = g_hash_table_new_full(g_int_hash, g_int_equal, 
+                        (GDestroyNotify)free, (GDestroyNotify)freeEntry);
                 }
                 incKeyInTable(oldEntry->subtable, sym);
                 
@@ -363,7 +358,8 @@ void intercept (XPointer user_data, XRecordInterceptData *data)
                     oldOldEntry = g_hash_table_lookup(symtab, lastKeys+2);
                     subEntry = g_hash_table_lookup(oldOldEntry->subtable, lastKeys+1);
                     if(NULL == subEntry->subtable) {
-                        subEntry->subtable = g_hash_table_new(g_int_hash, g_int_equal);
+                        subEntry->subtable = g_hash_table_new_full(g_int_hash, g_int_equal, 
+                            (GDestroyNotify)free, (GDestroyNotify)freeEntry);
                     }
                     incKeyInTable(subEntry->subtable, sym);
                 }
@@ -373,8 +369,9 @@ void intercept (XPointer user_data, XRecordInterceptData *data)
                 printTable(outfile, symtab, 0);
                 fprintf(outfile, "##########################################\n");
                 fflush(outfile);
-                freeTable(symtab);
-                symtab = g_hash_table_new(g_int_hash, g_int_equal);
+                g_hash_table_destroy(symtab);
+                symtab = g_hash_table_new_full(g_int_hash, g_int_equal, 
+                    (GDestroyNotify)free, (GDestroyNotify)freeEntry);
                 nreceived = 0;
             }
             
