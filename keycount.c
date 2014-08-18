@@ -70,6 +70,7 @@ GHashTable *symtab = NULL;
 Bool useDigraphs = True;
 Bool useTrigraphs = True;
 Bool useOnlyLevel1 = False;
+Bool ignoreDuplicatesP = False;
 #define NAMESIZE 50
 char symName[NAMESIZE];
 #define LASTKEYSIZE 3
@@ -97,10 +98,13 @@ int main (int argc, char **argv)
     symtab = g_hash_table_new_full(g_int_hash, g_int_equal, 
         (GDestroyNotify)free, (GDestroyNotify)freeEntry);
 
-    while ((ch = getopt (argc, argv, "dlf:c:")) != -1)
+    while ((ch = getopt (argc, argv, "idlf:c:")) != -1)
     {
         switch (ch)
         {
+        case 'i':
+            ignoreDuplicatesP = True;
+            break;
         case 'l':
             useOnlyLevel1 = True;
             break;
@@ -340,6 +344,9 @@ void intercept (XPointer user_data, XRecordInterceptData *data)
         //XkbKeycodeToKeysym (display, keycode, group, level)
         //XKeysymToString(xksym)
         if (key_event == KeyPress) {
+            if (ignoreDuplicatesP && sym == lastKeys[0]) {
+                goto end;
+            }
             ++nreceived;
             rotateLastkeys(sym);
             // record new key
@@ -378,6 +385,8 @@ void intercept (XPointer user_data, XRecordInterceptData *data)
         }
 
     }
+
+end:
 
     XRecordFreeData (data);
 }
