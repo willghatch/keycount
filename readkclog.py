@@ -1,5 +1,9 @@
 #!/usr/bin/python3
 
+# quick script to better format output from keycount
+# pipe keycount's output files into this to produce a
+# more legible summary
+
 import sys
 
 syms = {}
