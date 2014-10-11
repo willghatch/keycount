@@ -1,7 +1,8 @@
 /************************************************************************
- * xcape.c
+ * keycount.c
  *
  * Copyright 2012 Albin Olsson
+ * Copyright 2014 William Hatch
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -119,12 +120,17 @@ int main (int argc, char **argv)
         default:
             fprintf (stdout, "Usage: %s [-f <outputfile>]\n", argv[0]);
             fprintf (stdout, "    [-c <dump threshold>]\n");
-            fprintf (stdout, "Now with -l for use only level1 symbols\n");
+            fprintf (stdout, "    [-dil]\n");
+            fprintf (stdout, "-l to use only level 1 symbols\n");
             fprintf (stdout, "(useful for getting stats on physical keys\n");
-            fprintf (stdout, "Runs as a daemon unless -d flag is set\n");
+            fprintf (stdout, "-i ignore duplicates (2+ consecutive strokes\n");
+            fprintf (stdout, "on same key) - useful to ignore large numbers\n");
+            fprintf (stdout, "of presses due to eg. holding a key down.\n");
+            fprintf (stdout, "-d debug -- don't detach as daemon\n");
             fprintf (stdout, "Dumps output to outputfile (defaults to");
             fprintf (stdout, "keycount.log) every time it reads the");
             fprintf (stdout, "threshold number of keys.");
+            fprintf (stdout, "Note: it OVERWRITES the log each time.");
             return EXIT_SUCCESS;
         }
     }
