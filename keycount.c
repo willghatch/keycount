@@ -127,10 +127,13 @@ int main (int argc, char **argv)
             fprintf (stdout, "on same key) - useful to ignore large numbers\n");
             fprintf (stdout, "of presses due to eg. holding a key down.\n");
             fprintf (stdout, "-d debug -- don't detach as daemon\n");
-            fprintf (stdout, "Dumps output to outputfile (defaults to");
-            fprintf (stdout, "keycount.log) every time it reads the");
-            fprintf (stdout, "threshold number of keys.");
-            fprintf (stdout, "Note: it OVERWRITES the log each time.");
+            fprintf (stdout, "Dumps output to outputfile (defaults to\n");
+            fprintf (stdout, "keycount.log) every time it reads the\n");
+            fprintf (stdout, "threshold number of keys.\n");
+            fprintf (stdout, "Note: it OVERWRITES the log each time.\n");
+            fprintf (stdout, "Note: -f is broken and I don't currently care to\n");
+            fprintf (stdout, "bother fixing it at the moment, but at least I'll\n");
+            fprintf (stdout, "warn you\n");
             return EXIT_SUCCESS;
         }
     }
