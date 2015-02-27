@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 # quick script to better format output from keycount
 # pipe keycount's output files into this to produce a
@@ -34,16 +34,22 @@ for line in sys.stdin:
 
 print("------- Symbol frequency -------")
 symview = sorted( ((v,k) for k,v in syms.items()), reverse=True)
+total = 0
 for elem in symview:
-    print(str(elem[0])+" "+elem[1])
+    total += elem[0]
+
+print("total: "+str(total)+" keypresses")
+
+for elem in symview:
+    print("%.3f%% %d %s"%((100*elem[0]/total), elem[0], elem[1]))
     
 print("------- digraph frequency -------")
 symview = sorted( ((v,k) for k,v in digraphs.items()), reverse=True)
 for elem in symview:
-    print(str(elem[0])+" "+elem[1])
+    print("%.3f%% %d %s"%((100*elem[0]/total), elem[0], elem[1]))
 
 print("------- trigraph frequency -------")
 symview = sorted( ((v,k) for k,v in trigraphs.items()), reverse=True)
 for elem in symview:
-    print(str(elem[0])+" "+elem[1])
+    print("%.3f%% %d %s"%((100*elem[0]/total), elem[0], elem[1]))
 
