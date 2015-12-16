@@ -95,6 +95,8 @@ int main (int argc, char **argv)
     int dummy, ch;
     outfile = NULL;
     self->debug = False;
+    char filename[FILENAME_MAX];
+    int gotFileNameP = 0;
 
     symtab = g_hash_table_new_full(g_int_hash, g_int_equal, 
         (GDestroyNotify)free, (GDestroyNotify)freeEntry);
@@ -113,7 +115,8 @@ int main (int argc, char **argv)
             self->debug = True;
             break;
         case 'f':
-            outfile = fopen(optarg, "w");
+            strncpy(filename, optarg, FILENAME_MAX);
+            gotFileNameP = 1;
         case 'c':
             dumpThreshold = atoi(optarg);
             break;
@@ -130,16 +133,17 @@ int main (int argc, char **argv)
             fprintf (stdout, "Dumps output to outputfile (defaults to\n");
             fprintf (stdout, "keycount.log) every time it reads the\n");
             fprintf (stdout, "threshold number of keys.\n");
-            fprintf (stdout, "Note: it OVERWRITES the log each time.\n");
             fprintf (stdout, "Note: -f is broken and I don't currently care to\n");
             fprintf (stdout, "bother fixing it at the moment, but at least I'll\n");
             fprintf (stdout, "warn you\n");
             return EXIT_SUCCESS;
         }
     }
-    if (NULL == outfile) {
-        outfile = fopen("keycount.log", "w");
+    if (!gotFileNameP) {
+        strncpy(filename, "keycount.log", FILENAME_MAX);
     }
+
+    outfile = fopen(filename, "a");
 
     self->data_conn = XOpenDisplay (NULL);
     self->ctrl_conn = XOpenDisplay (NULL);
