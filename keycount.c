@@ -117,6 +117,7 @@ int main (int argc, char **argv)
         case 'f':
             strncpy(filename, optarg, FILENAME_MAX);
             gotFileNameP = 1;
+            break;
         case 'c':
             dumpThreshold = atoi(optarg);
             break;
@@ -133,9 +134,6 @@ int main (int argc, char **argv)
             fprintf (stdout, "Dumps output to outputfile (defaults to\n");
             fprintf (stdout, "keycount.log) every time it reads the\n");
             fprintf (stdout, "threshold number of keys.\n");
-            fprintf (stdout, "Note: -f is broken and I don't currently care to\n");
-            fprintf (stdout, "bother fixing it at the moment, but at least I'll\n");
-            fprintf (stdout, "warn you\n");
             return EXIT_SUCCESS;
         }
     }
