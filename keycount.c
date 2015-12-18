@@ -65,6 +65,7 @@ void *sig_handler (void *user_data);
 void intercept (XPointer user_data, XRecordInterceptData *data);
 
 void printTable(FILE* stream, GHashTable *tab, int depth);
+void flushTableToFile();
 void freeEntry(Entry *entry);
 
 GHashTable *symtab = NULL;
@@ -183,6 +184,7 @@ int main (int argc, char **argv)
     sigemptyset (&self->sigset);
     sigaddset (&self->sigset, SIGINT);
     sigaddset (&self->sigset, SIGTERM);
+    sigaddset (&self->sigset, SIGHUP);
     pthread_sigmask (SIG_BLOCK, &self->sigset, NULL);
 
     pthread_create (&self->sigwait_thread,
@@ -238,6 +240,7 @@ void *sig_handler (void *user_data)
     sigwait(&self->sigset, &sig);
 
     if (self->debug) fprintf (stdout, "Caught signal %d!\n", sig);
+    flushTableToFile();
 
     if (!XRecordDisableContext (self->ctrl_conn,
                 self->record_ctx))
@@ -321,6 +324,16 @@ void freeEntry(Entry *entry) {
     free(entry);
 }
 
+void flushTableToFile(){
+    printTable(outfile, symtab, 0);
+    fprintf(outfile, "##########################################\n");
+    fflush(outfile);
+    g_hash_table_destroy(symtab);
+    symtab = g_hash_table_new_full(g_int_hash, g_int_equal, 
+        (GDestroyNotify)free, (GDestroyNotify)freeEntry);
+    nreceived = 0;
+}
+
 void intercept (XPointer user_data, XRecordInterceptData *data)
 {
     XCape_t *self = (XCape_t*)user_data;
@@ -391,13 +404,7 @@ void intercept (XPointer user_data, XRecordInterceptData *data)
             }
 
             if (nreceived == dumpThreshold) {
-                printTable(outfile, symtab, 0);
-                fprintf(outfile, "##########################################\n");
-                fflush(outfile);
-                g_hash_table_destroy(symtab);
-                symtab = g_hash_table_new_full(g_int_hash, g_int_equal, 
-                    (GDestroyNotify)free, (GDestroyNotify)freeEntry);
-                nreceived = 0;
+                flushTableToFile();
             }
             
         }
