@@ -72,6 +72,7 @@ Bool useDigraphs = True;
 Bool useTrigraphs = True;
 Bool useOnlyLevel1 = False;
 Bool ignoreDuplicatesP = False;
+Bool ignoreDuplicates2P = False;
 #define NAMESIZE 50
 char symName[NAMESIZE];
 #define LASTKEYSIZE 3
@@ -101,12 +102,15 @@ int main (int argc, char **argv)
     symtab = g_hash_table_new_full(g_int_hash, g_int_equal, 
         (GDestroyNotify)free, (GDestroyNotify)freeEntry);
 
-    while ((ch = getopt (argc, argv, "idlf:c:")) != -1)
+    while ((ch = getopt (argc, argv, "i2dlf:c:")) != -1)
     {
         switch (ch)
         {
         case 'i':
             ignoreDuplicatesP = True;
+            break;
+        case '2':
+            ignoreDuplicates2P = True;
             break;
         case 'l':
             useOnlyLevel1 = True;
@@ -126,14 +130,16 @@ int main (int argc, char **argv)
             fprintf (stdout, "    [-c <dump threshold>]\n");
             fprintf (stdout, "    [-dil]\n");
             fprintf (stdout, "-l to use only level 1 symbols\n");
-            fprintf (stdout, "(useful for getting stats on physical keys\n");
+            fprintf (stdout, "   (useful for getting stats on physical keys\n");
             fprintf (stdout, "-i ignore duplicates (2+ consecutive strokes\n");
-            fprintf (stdout, "on same key) - useful to ignore large numbers\n");
-            fprintf (stdout, "of presses due to eg. holding a key down.\n");
+            fprintf (stdout, "   on same key) - useful to ignore large numbers\n");
+            fprintf (stdout, "   of presses due to eg. holding a key down.\n");
+            fprintf (stdout, "-2 ignore duplicates after 2\n");
+            fprintf (stdout, "   (better than -i)\n");
             fprintf (stdout, "-d debug -- don't detach as daemon\n");
-            fprintf (stdout, "Dumps output to outputfile (defaults to\n");
-            fprintf (stdout, "keycount.log) every time it reads the\n");
-            fprintf (stdout, "threshold number of keys.\n");
+            fprintf (stdout, "   Dumps output to outputfile (defaults to\n");
+            fprintf (stdout, "   keycount.log) every time it reads the\n");
+            fprintf (stdout, "   threshold number of keys.\n");
             return EXIT_SUCCESS;
         }
     }
@@ -355,7 +361,8 @@ void intercept (XPointer user_data, XRecordInterceptData *data)
         //XkbKeycodeToKeysym (display, keycode, group, level)
         //XKeysymToString(xksym)
         if (key_event == KeyPress) {
-            if (ignoreDuplicatesP && sym == lastKeys[0]) {
+            if ((ignoreDuplicatesP && sym == lastKeys[0]) ||
+                (ignoreDuplicates2P && sym == lastKeys[0] && sym == lastKeys[1])) {
                 goto end;
             }
             ++nreceived;
