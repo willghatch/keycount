@@ -17,6 +17,7 @@ $(TARGET): keycount.c
 
 install:
 	$(INSTALL) -Dm 755 $(TARGET) $(DESTDIR)$(PREFIX)/bin/$(TARGET)
+	$(INSTALL) -Dm 755 readkclog.py $(DESTDIR)$(PREFIX)/bin/readkclog.py
 
 clean:
 	rm $(TARGET)
